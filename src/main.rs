@@ -116,12 +116,30 @@ impl eframe::App for FileCleanerApp {
             // Results section
             if !self.scan_results.is_empty() {
                 ui.separator();
-                ui.heading(format!("Found {} files to delete", self.scan_results.len()));
+                
+                let selected_count = self.scan_results.iter().filter(|r| r.should_delete).count();
+                ui.heading(format!("Found {} files ({} selected for deletion)", 
+                    self.scan_results.len(), selected_count));
+                
+                ui.horizontal(|ui| {
+                    if ui.button("Select All").clicked() {
+                        for result in &mut self.scan_results {
+                            result.should_delete = true;
+                        }
+                    }
+                    if ui.button("Deselect All").clicked() {
+                        for result in &mut self.scan_results {
+                            result.should_delete = false;
+                        }
+                    }
+                });
+                
                 ui.add_space(10.0);
                 
                 egui::ScrollArea::vertical().max_height(250.0).show(ui, |ui| {
-                    for result in &self.scan_results {
+                    for result in &mut self.scan_results {
                         ui.horizontal(|ui| {
+                            ui.checkbox(&mut result.should_delete, "");
                             ui.label(&result.file_name);
                             ui.label(format!("({} days old)", result.days_since_access));
                         });
@@ -130,8 +148,12 @@ impl eframe::App for FileCleanerApp {
                 
                 ui.add_space(10.0);
                 
-                if ui.button("Delete All Listed Files").clicked() {
-                    self.delete_files();
+                if selected_count > 0 {
+                    if ui.button(format!("Delete {} Selected Files", selected_count)).clicked() {
+                        self.delete_files();
+                    }
+                } else {
+                    ui.label("No files selected for deletion");
                 }
             }
         });
