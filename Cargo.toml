@@ -7,3 +7,4 @@ edition = "2024"
 whoami = "1.6.1"
 eframe = "0.29"
 egui = "0.29"
+image = { version = "0.25.8", features = ["png"] }
