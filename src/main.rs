@@ -85,6 +85,7 @@ struct FileCleanerApp {
     is_scanning: bool,
     status_message: String,
     smart_filter_enabled: bool,
+    top_panel_height: f32,
 }
 
 #[derive(Clone)]
@@ -108,120 +109,309 @@ impl Default for FileCleanerApp {
             is_scanning: false,
             status_message: String::new(),
             smart_filter_enabled: true,
+            top_panel_height: 200.0, // Smaller for settings only
         }
     }
 }
 
 impl eframe::App for FileCleanerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("PinnacleSort - File Cleaner");
-            ui.add_space(10.0);
-            
-            // Time limit section
-            ui.horizontal(|ui| {
-                ui.label("Delete files not accessed in:");
-                ui.add(egui::Slider::new(&mut self.time_limit_days, 1..=365).suffix(" days"));
+        // Fixed title header at the top
+        egui::TopBottomPanel::top("title_header")
+            .resizable(false)
+            .show(ctx, |ui| {
+                let title_frame = egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(63, 81, 181))
+                    .inner_margin(egui::Margin::same(12.0))
+                    .rounding(egui::Rounding::same(0.0));
+                
+                title_frame.show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.heading(egui::RichText::new("🏔️ PinnacleSort")
+                            .size(24.0)
+                            .color(egui::Color32::WHITE));
+                        ui.label(egui::RichText::new("Intelligent File Cleanup Tool")
+                            .size(12.0)
+                            .color(egui::Color32::from_rgb(200, 200, 255)));
+                    });
+                });
             });
-            ui.add_space(10.0);
+        
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let available_height = ui.available_height();
+            
+            // Top panel for settings (without title now)
+            egui::TopBottomPanel::top("settings_panel")
+                .exact_height(self.top_panel_height)
+                .resizable(false)
+                .show_inside(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+            ui.add_space(8.0);
+            
+            // Time limit section with better styling
+            let settings_frame = egui::Frame::none()
+                .fill(egui::Color32::from_rgb(250, 250, 250))
+                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(220, 220, 220)))
+                .inner_margin(egui::Margin::same(10.0))
+                .rounding(egui::Rounding::same(4.0));
+            
+            settings_frame.show(ui, |ui| {
+                ui.label(egui::RichText::new("⏰ Time Threshold")
+                    .size(14.0)
+                    .strong()
+                    .color(egui::Color32::BLACK));
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Delete files not accessed in:")
+                        .size(12.0)
+                        .color(egui::Color32::from_rgb(80, 80, 80)));
+                    ui.add(egui::Slider::new(&mut self.time_limit_days, 1..=365)
+                        .suffix(" days"));
+                });
+            });
+            ui.add_space(8.0);
             
             // Directory selection
-            ui.heading("Directories to Search:");
-            ui.checkbox(&mut self.downloads_enabled, "Downloads");
-            ui.checkbox(&mut self.documents_enabled, "Documents");
-            ui.checkbox(&mut self.desktop_enabled, "Desktop");
-            ui.add_space(10.0);
+            let dir_frame = egui::Frame::none()
+                .fill(egui::Color32::from_rgb(250, 250, 250))
+                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(220, 220, 220)))
+                .inner_margin(egui::Margin::same(10.0))
+                .rounding(egui::Rounding::same(4.0));
+            
+            dir_frame.show(ui, |ui| {
+                ui.label(egui::RichText::new("📁 Directories to Search")
+                    .size(14.0)
+                    .strong()
+                    .color(egui::Color32::BLACK));
+                ui.add_space(6.0);
+                ui.checkbox(&mut self.downloads_enabled, 
+                    egui::RichText::new("📥 Downloads").size(12.0).color(egui::Color32::BLACK));
+                ui.checkbox(&mut self.documents_enabled, 
+                    egui::RichText::new("📝 Documents").size(12.0).color(egui::Color32::BLACK));
+                ui.checkbox(&mut self.desktop_enabled, 
+                    egui::RichText::new("🖥️ Desktop").size(12.0).color(egui::Color32::BLACK));
+            });
+            ui.add_space(8.0);
+            
+            // Custom directories below
+            let custom_frame = egui::Frame::none()
+                .fill(egui::Color32::from_rgb(250, 250, 250))
+                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(220, 220, 220)))
+                .inner_margin(egui::Margin::same(10.0))
+                .rounding(egui::Rounding::same(4.0));
+            
+            custom_frame.show(ui, |ui| {
+                ui.label(egui::RichText::new("➕ Custom Directories")
+                    .size(14.0)
+                    .strong()
+                    .color(egui::Color32::BLACK));
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Path:").size(12.0).color(egui::Color32::from_rgb(80, 80, 80)));
+                    ui.text_edit_singleline(&mut self.new_directory);
+                    
+                    let add_btn = egui::Button::new(
+                        egui::RichText::new("Add").size(12.0).color(egui::Color32::WHITE)
+                    )
+                    .fill(egui::Color32::from_rgb(76, 175, 80))
+                    .rounding(egui::Rounding::same(3.0))
+                    .min_size(egui::vec2(50.0, 24.0));
+                    
+                    if ui.add(add_btn).clicked() && !self.new_directory.is_empty() {
+                        self.custom_directories.push(self.new_directory.clone());
+                        self.new_directory.clear();
+                    }
+                });
+                
+                // Display custom directories
+                if !self.custom_directories.is_empty() {
+                    ui.add_space(6.0);
+                }
+                let mut to_remove = None;
+                for (idx, dir) in self.custom_directories.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(format!("📂 {}", dir))
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(80, 80, 80)));
+                        
+                        let remove_btn = egui::Button::new(
+                            egui::RichText::new("✕").size(11.0).color(egui::Color32::WHITE)
+                        )
+                        .fill(egui::Color32::from_rgb(244, 67, 54))
+                        .rounding(egui::Rounding::same(2.0))
+                        .min_size(egui::vec2(24.0, 18.0));
+                        
+                        if ui.add(remove_btn).clicked() {
+                            to_remove = Some(idx);
+                        }
+                    });
+                }
+                if let Some(idx) = to_remove {
+                    self.custom_directories.remove(idx);
+                }
+            });
+            ui.add_space(8.0);
             
             // Smart filter option
-            ui.checkbox(&mut self.smart_filter_enabled, "Smart Filter (exclude binary/system files)");
-            ui.add_space(10.0);
+            let smart_frame = egui::Frame::none()
+                .fill(egui::Color32::from_rgb(250, 250, 250))
+                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(220, 220, 220)))
+                .inner_margin(egui::Margin::same(10.0))
+                .rounding(egui::Rounding::same(4.0));
             
-            // Custom directories
-            ui.heading("Custom Directories:");
+            smart_frame.show(ui, |ui| {
+                ui.checkbox(&mut self.smart_filter_enabled, 
+                    egui::RichText::new("🧠 Smart Filter (exclude binary/system files)")
+                        .size(12.0)
+                        .color(egui::Color32::BLACK));
+            });
+            ui.add_space(8.0);
+                    });  // Close ScrollArea
+            });  // Close TopBottomPanel
+            
+            // Resizable divider - make it more visible
+            let divider_response = ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), 8.0),
+                egui::Layout::top_down(egui::Align::Center),
+                |ui| {
+                    ui.add_space(2.0);
+                    // Draw a thicker, more visible separator
+                    let (rect, _) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width(), 4.0),
+                        egui::Sense::hover()
+                    );
+                    ui.painter().rect_filled(
+                        rect,
+                        0.0,
+                        egui::Color32::from_rgb(120, 120, 120)
+                    );
+                    ui.add_space(2.0);
+                }
+            ).response;
+            
+            // Handle dragging to resize
+            if divider_response.dragged() {
+                if let Some(pointer_pos) = ctx.pointer_interact_pos() {
+                    // Allow dragging but default to half the available height
+                    self.top_panel_height = pointer_pos.y.clamp(100.0, available_height - 100.0);
+                }
+            }
+            
+            // Change cursor when hovering over divider
+            if divider_response.hovered() {
+                ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical);
+            }
+            
+            // Scan button OUTSIDE the top panel - always visible
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
-                ui.label("Add directory:");
-                ui.text_edit_singleline(&mut self.new_directory);
-                if ui.button("Add").clicked() && !self.new_directory.is_empty() {
-                    self.custom_directories.push(self.new_directory.clone());
-                    self.new_directory.clear();
+                ui.add_space(4.0);
+                let scan_btn = egui::Button::new(
+                    egui::RichText::new("🔍 Scan for Old Files")
+                        .size(14.0)
+                        .color(egui::Color32::WHITE)
+                )
+                .fill(egui::Color32::from_rgb(33, 150, 243))
+                .rounding(egui::Rounding::same(4.0))
+                .min_size(egui::vec2(180.0, 32.0));
+                
+                if ui.add(scan_btn).clicked() && !self.is_scanning {
+                    self.scan_files();
+                }
+                
+                // Status message inline with scan button
+                if !self.status_message.is_empty() {
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new(format!("ℹ️ {}", &self.status_message))
+                        .size(12.0)
+                        .color(egui::Color32::from_rgb(46, 125, 50)));
                 }
             });
             
-            // Display custom directories
-            ui.add_space(5.0);
-            let mut to_remove = None;
-            for (idx, dir) in self.custom_directories.iter().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.label(dir);
-                    if ui.button("Remove").clicked() {
-                        to_remove = Some(idx);
-                    }
-                });
-            }
-            if let Some(idx) = to_remove {
-                self.custom_directories.remove(idx);
-            }
+            ui.add_space(8.0);
             
-            ui.add_space(10.0);
-            ui.separator();
-            ui.add_space(10.0);
-            
-            // Scan button
-            if ui.button("Scan for Old Files").clicked() && !self.is_scanning {
-                self.scan_files();
-            }
-            
-            ui.add_space(10.0);
-            
-            // Status message
-            if !self.status_message.is_empty() {
-                ui.label(&self.status_message);
-                ui.add_space(10.0);
-            }
-            
+            // Bottom panel for results
+            egui::CentralPanel::default().show_inside(ui, |ui| {
             // Results section
             if !self.scan_results.is_empty() {
-                ui.separator();
-                
                 let selected_count = self.scan_results.iter().filter(|r| r.should_delete).count();
-                ui.heading(format!("Found {} files ({} selected to move to trash)", 
-                    self.scan_results.len(), selected_count));
                 
-                ui.horizontal(|ui| {
-                    if ui.button("Select All").clicked() {
-                        for result in &mut self.scan_results {
-                            result.should_delete = true;
-                        }
-                    }
-                    if ui.button("Deselect All").clicked() {
-                        for result in &mut self.scan_results {
-                            result.should_delete = false;
-                        }
-                    }
+                // Compact heading with background
+                let header_frame = egui::Frame::none()
+                    .fill(egui::Color32::from_rgb(245, 245, 245))
+                    .inner_margin(egui::Margin::symmetric(8.0, 6.0))
+                    .rounding(egui::Rounding::same(0.0));
+                
+                header_frame.show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(
+                            format!("📊 {} files  •  {} selected", 
+                                self.scan_results.len(), selected_count)
+                        ).size(13.0).strong());
+                        
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if selected_count > 0 {
+                                let delete_btn = egui::Button::new(
+                                    egui::RichText::new(format!("🗑️ Delete {}", selected_count))
+                                        .size(12.0)
+                                        .color(egui::Color32::WHITE)
+                                )
+                                .fill(egui::Color32::from_rgb(244, 67, 54))
+                                .rounding(egui::Rounding::same(3.0))
+                                .min_size(egui::vec2(90.0, 24.0));
+                                
+                                if ui.add(delete_btn).clicked() {
+                                    self.delete_files();
+                                }
+                                ui.add_space(4.0);
+                            }
+                            
+                            let deselect_all_btn = egui::Button::new(
+                                egui::RichText::new("✗ Deselect").size(12.0).color(egui::Color32::WHITE)
+                            )
+                            .fill(egui::Color32::from_rgb(158, 158, 158))
+                            .rounding(egui::Rounding::same(3.0))
+                            .min_size(egui::vec2(80.0, 24.0));
+                            
+                            if ui.add(deselect_all_btn).clicked() {
+                                for result in &mut self.scan_results {
+                                    result.should_delete = false;
+                                }
+                            }
+                            
+                            ui.add_space(4.0);
+                            
+                            let select_all_btn = egui::Button::new(
+                                egui::RichText::new("✓ Select All").size(12.0).color(egui::Color32::WHITE)
+                            )
+                            .fill(egui::Color32::from_rgb(76, 175, 80))
+                            .rounding(egui::Rounding::same(3.0))
+                            .min_size(egui::vec2(80.0, 24.0));
+                            
+                            if ui.add(select_all_btn).clicked() {
+                                for result in &mut self.scan_results {
+                                    result.should_delete = true;
+                                }
+                            }
+                        });
+                    });
                 });
                 
-                ui.add_space(10.0);
+                ui.add_space(4.0);
                 
-                // Calculate available height for scroll area
-                let available_height = ui.available_height() - 80.0; // Reserve space for button at bottom
+                // Calculate available height for scroll area - use all available space
+                let available_height = ui.available_height();
                 
                 egui::ScrollArea::vertical()
                     .max_height(available_height)
-                    .auto_shrink([false, true])
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
                         self.render_directory_tree(ui, 0);
                     });
-                
-                ui.add_space(10.0);
-                
-                if selected_count > 0 {
-                    if ui.button(format!("Move {} Selected Files to Trash", selected_count)).clicked() {
-                        self.delete_files();
-                    }
-                } else {
-                    ui.label("No files selected");
-                }
             }
+            });
         });
     }
 }
@@ -312,7 +502,7 @@ impl FileCleanerApp {
         let (total_files, selected_files) = self.count_files_recursive(path, tree, file_map);
         
         if total_files > 0 {
-            ui.add_space(5.0);
+            ui.add_space(3.0);
             
             // Determine icon and color based on selection state
             let icon = if depth == 0 { "📁" } else { "📂" };
@@ -324,30 +514,50 @@ impl FileCleanerApp {
                 "⬜" // None selected
             };
             
-            let header_text = format!("{} {} {} ({} of {} selected)", 
-                selection_status, icon, folder_name, selected_files, total_files);
+            let header_text = egui::RichText::new(
+                format!("{} {} {} ({}/{})", 
+                    selection_status, icon, folder_name, selected_files, total_files)
+            )
+            .color(egui::Color32::WHITE)
+            .size(13.0)
+            .strong();
             
-            // Use a stable ID for the collapsing header to maintain state
-            egui::CollapsingHeader::new(header_text)
-                .id_salt(path)
-                .default_open(false)
-                .show(ui, |ui| {
-                    ui.add_space(indent);
+            // Add background for the collapsing header
+            let header_frame = egui::Frame::none()
+                .fill(egui::Color32::from_rgb(63, 81, 181))
+                .inner_margin(egui::Margin::symmetric(10.0, 6.0))
+                .rounding(egui::Rounding::same(2.0));
+            
+            header_frame.show(ui, |ui| {
+                // Use a stable ID for the collapsing header to maintain state
+                egui::CollapsingHeader::new(header_text)
+                    .id_salt(path)
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        ui.add_space(indent);
                     
                     // Add select/deselect buttons with color
                     ui.horizontal(|ui| {
                         ui.add_space(indent);
                         
                         let select_btn = egui::Button::new(
-                            egui::RichText::new("✓ Select All").color(egui::Color32::WHITE)
-                        ).fill(egui::Color32::from_rgb(220, 80, 80));
+                            egui::RichText::new("✓ Select All").size(12.0).color(egui::Color32::WHITE)
+                        )
+                        .fill(egui::Color32::from_rgb(244, 67, 54))
+                        .rounding(egui::Rounding::same(3.0))
+                        .min_size(egui::vec2(90.0, 25.0));
+                        
                         if ui.add(select_btn).clicked() {
                             self.select_all_recursive(path, tree, file_map, true);
                         }
                         
                         let deselect_btn = egui::Button::new(
-                            egui::RichText::new("✗ Deselect All").color(egui::Color32::WHITE)
-                        ).fill(egui::Color32::from_rgb(80, 180, 80));
+                            egui::RichText::new("✗ Deselect All").size(12.0).color(egui::Color32::WHITE)
+                        )
+                        .fill(egui::Color32::from_rgb(76, 175, 80))
+                        .rounding(egui::Rounding::same(3.0))
+                        .min_size(egui::vec2(90.0, 25.0));
+                        
                         if ui.add(deselect_btn).clicked() {
                             self.select_all_recursive(path, tree, file_map, false);
                         }
@@ -368,14 +578,15 @@ impl FileCleanerApp {
                             
                             // Color code the row based on selection
                             let bg_color = if result.should_delete {
-                                egui::Color32::from_rgba_unmultiplied(255, 200, 200, 40) // Light red tint
+                                egui::Color32::from_rgb(255, 235, 235) // Light red
                             } else {
-                                egui::Color32::from_rgba_unmultiplied(200, 255, 200, 20) // Light green tint
+                                egui::Color32::from_rgb(235, 255, 235) // Light green
                             };
                             
                             let frame = egui::Frame::none()
                                 .fill(bg_color)
-                                .inner_margin(egui::Margin::same(4.0))
+                                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(200, 200, 200)))
+                                .inner_margin(egui::Margin::same(6.0))
                                 .rounding(egui::Rounding::same(3.0));
                             
                             frame.show(ui, |ui| {
@@ -386,19 +597,19 @@ impl FileCleanerApp {
                                     let file_icon = if result.should_delete { "🗑️" } else { "📄" };
                                     ui.label(file_icon);
                                     
-                                    let text_color = if result.should_delete {
-                                        egui::Color32::from_rgb(180, 50, 50)
-                                    } else {
-                                        egui::Color32::from_rgb(50, 120, 50)
-                                    };
+                                    ui.label(egui::RichText::new(&result.file_name)
+                                        .color(egui::Color32::BLACK)
+                                        .size(13.0));
                                     
-                                    ui.colored_label(text_color, &result.file_name);
-                                    ui.label(format!("({} days)", result.days_since_access));
+                                    ui.label(egui::RichText::new(format!("({} days)", result.days_since_access))
+                                        .color(egui::Color32::from_rgb(100, 100, 100))
+                                        .size(12.0));
                                 });
                             });
                         }
                     }
                 });
+            });
         }
     }
     
@@ -654,100 +865,40 @@ impl FileCleanerApp {
         }
     }
     
-    fn get_trash_directory() -> Result<String, String> {
-        let user = whoami::username();
-        let trash_dir = if cfg!(target_os = "windows") {
-            format!("C:\\Users\\{}\\Desktop\\PinnacleSort_Trash\\", user)
-        } else {
-            format!("/Users/{}/Desktop/PinnacleSort_Trash/", user)
-        };
-        
-        // Create trash directory if it doesn't exist
-        if let Err(e) = fs::create_dir_all(&trash_dir) {
-            return Err(format!("Failed to create trash directory: {}", e));
-        }
-        
-        Ok(trash_dir)
-    }
-    
-    fn move_to_trash(&self, file_path: &str, trash_dir: &str) -> Result<(), String> {
-        let source_path = std::path::Path::new(file_path);
-        let file_name = source_path
-            .file_name()
-            .ok_or("Invalid file name")?
-            .to_str()
-            .ok_or("Invalid UTF-8 in file name")?;
-        
-        let mut dest_path = std::path::PathBuf::from(trash_dir);
-        dest_path.push(file_name);
-        
-        // If file already exists in trash, add a timestamp
-        if dest_path.exists() {
-            let timestamp = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
-            let stem = source_path.file_stem().unwrap().to_str().unwrap();
-            let ext = source_path.extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
-            let new_name = if ext.is_empty() {
-                format!("{}_{}", stem, timestamp)
-            } else {
-                format!("{}_{}.{}", stem, timestamp, ext)
-            };
-            dest_path = std::path::PathBuf::from(trash_dir);
-            dest_path.push(new_name);
-        }
-        
-        fs::rename(file_path, &dest_path)
-            .map_err(|e| format!("Failed to move file: {}", e))?;
-        
-        Ok(())
-    }
-    
     fn delete_files(&mut self) {
-        let mut moved_count = 0;
+        let mut deleted_count = 0;
         let mut failed_count = 0;
-        let mut associated_moved = 0;
-        
-        let trash_dir = match Self::get_trash_directory() {
-            Ok(dir) => dir,
-            Err(e) => {
-                self.status_message = format!("Error: {}", e);
-                return;
-            }
-        };
+        let mut associated_deleted = 0;
         
         for result in &self.scan_results {
             if result.should_delete {
-                // If it's an .exe file, find and move associated files first
+                // If it's an .exe file, find and delete associated files first
                 if result.file_path.to_lowercase().ends_with(".exe") {
                     let associated_files = self.find_associated_files(&result.file_path);
                     for assoc_file in associated_files {
-                        if self.move_to_trash(&assoc_file, &trash_dir).is_ok() {
-                            associated_moved += 1;
+                        if fs::remove_file(&assoc_file).is_ok() {
+                            associated_deleted += 1;
                         }
                     }
                 }
                 
-                // Move the main file
-                match self.move_to_trash(&result.file_path, &trash_dir) {
-                    Ok(_) => moved_count += 1,
+                // Delete the main file
+                match fs::remove_file(&result.file_path) {
+                    Ok(_) => deleted_count += 1,
                     Err(_) => failed_count += 1,
                 }
             }
         }
         
-        let message = if associated_moved > 0 {
+        let message = if associated_deleted > 0 {
             format!(
-                "Moved {} files ({} associated files) to trash. {} failed. Location: {}",
-                moved_count, associated_moved, failed_count, trash_dir
+                "✅ Deleted {} files ({} associated files). ❌ {} failed.",
+                deleted_count, associated_deleted, failed_count
             )
         } else {
             format!(
-                "Moved {} files to trash. {} failed. Location: {}",
-                moved_count, failed_count, trash_dir
+                "✅ Deleted {} files. ❌ {} failed.",
+                deleted_count, failed_count
             )
         };
         
